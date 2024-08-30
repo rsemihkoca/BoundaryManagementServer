@@ -190,6 +190,64 @@ async def get_boundaries(camera_ip: str):
 
     return GenericResponse(success=True, data=camera_boundaries)
 
+
+@app.post("/boundaries/{camera_ip}/reset", response_model=GenericResponse)
+async def reset_boundaries(camera_ip: str):
+    # Validation: Check if camera_ip is provided
+    if not camera_ip:
+        raise HTTPException(status_code=400, detail="Camera IP is required.")
+
+    # Check if the camera has a match
+    matches = load_data(MATCH_DB_FILE)
+    match_index = next((i for i, m in enumerate(matches) if m["camera_ip"] == camera_ip), None)
+
+    if match_index is None:
+        raise HTTPException(status_code=404, detail="No match found for the given camera IP.")
+
+    # Get the match details
+    match = matches[match_index]
+    table_id = match["table_id"]
+    capacity = match["capacity"]
+
+    # Update match status to OUTER
+    matches[match_index]["step"] = Step.OUTER.value
+    save_data(MATCH_DB_FILE, matches)
+
+    # Reset boundaries
+    boundaries = load_data(BOUNDARY_DB_FILE)
+    boundary_index = next((i for i, b in enumerate(boundaries) if b["camera_ip"] == camera_ip), None)
+
+    if boundary_index is None:
+        raise HTTPException(status_code=404, detail="No boundaries found for the given camera IP.")
+
+    # Remove existing boundaries and add default coordinates
+    boundary_items = []
+    for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
+        default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
+        new_boundary = Boundary(
+            boundary_type=boundary_type,
+            UL_coord=default_coords["UL"],
+            UR_coord=default_coords["UR"],
+            LR_coord=default_coords["LR"],
+            LL_coord=default_coords["LL"]
+        )
+        boundary_items.append(new_boundary.dict())
+
+    new_boundary_table = BoundaryTable(
+        table_id=table_id,
+        camera_ip=camera_ip,
+        items=boundary_items
+    )
+
+    boundaries[boundary_index] = new_boundary_table.dict()
+    save_data(BOUNDARY_DB_FILE, boundaries)
+
+    return GenericResponse(success=True, data={
+        "message": "Boundaries reset successfully",
+        "updated_match": matches[match_index],
+        "updated_boundaries": new_boundary_table.dict()
+    })
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080, log_config=logging_config)
