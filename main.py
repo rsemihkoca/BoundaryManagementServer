@@ -37,8 +37,6 @@ class Step(str, Enum):
     STEP_4 = "4"
     STEP_5 = "5"
     STEP_6 = "6"
-    STEP_7 = "7"
-    STEP_8 = "8"
     FINAL = "FINAL"
 
 class Match(BaseModel):
@@ -46,6 +44,15 @@ class Match(BaseModel):
     camera_ip: str
     step: Step
     capacity: int
+
+class Boundary(BaseModel):
+    table_id: str
+    camera_ip: str
+    boundary_type: str
+    UL_coord: Tuple(int, int)
+    UR_coord: Tuple(int, int)
+    LR_coord: Tuple(int, int)
+    LL_coord: Tuple(int, int)
 
 class GenericResponse(BaseModel):
     success: bool
@@ -124,10 +131,6 @@ def get_step_order_for_capacity(capacity: int) -> List[Step]:
         return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.FINAL]
     elif capacity == 6:
         return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.FINAL]
-    elif capacity == 7:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.STEP_7, Step.FINAL]
-    elif capacity == 8:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.STEP_7, Step.STEP_8, Step.FINAL]
     else:
         raise ValueError("Unsupported capacity")
 
