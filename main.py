@@ -15,7 +15,7 @@ from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_
 
 """
 
-init kaldır direkt outerdan basla
+init kaldır direkt outerdan basla DONE
 next ve back ile koordinat al güncelle current boundary koordinatlarını  cam ip ve ur ul neyse onları al
 kontroller:
 cam ip matchi var mı,
@@ -29,7 +29,7 @@ chair outer ile ve diğer chairler ile çakışamaz
 
 coordinate getall: bir kameranın tüm boundarylerini getir
 
-reset match init: boundaryleri default şekilde güncelle match json status init yap
+reset match OUTER: boundaryleri default şekilde güncelle match json status OUTER yap
 """
 
 # Setup logging
@@ -38,7 +38,6 @@ logger = logging.getLogger("app")
 logger.info(f"Boundary API version: {BOUNDARY_API_VERSION}")
 
 class Step(str, Enum):
-    INIT = "INIT"
     OUTER = "OUTER"
     TABLE = "TABLE"
     STEP_1 = "1"
@@ -83,7 +82,7 @@ def save_data(file_path: str, data: List[dict]):
         json.dump(data, f, indent=2)
 
 def get_step_order_for_capacity(capacity: int) -> List[Step]:
-    base_steps = [Step.INIT, Step.OUTER, Step.TABLE]
+    base_steps = [Step.OUTER, Step.TABLE]
     capacity_steps = [getattr(Step, f"STEP_{i}") for i in range(1, min(capacity + 1, 7))]
     return base_steps + capacity_steps + [Step.FINAL]
 
@@ -121,7 +120,7 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
         raise HTTPException(status_code=400, detail="Match already exists.")
 
-    new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
+    new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.OUTER, capacity=capacity)
     matches.append(new_match.dict())
     save_data(MATCH_DB_FILE, matches)
 
