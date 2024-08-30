@@ -129,9 +129,13 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
 
     return GenericResponse(success=True, data=new_match.dict())
 
+class Direction(str, Enum):
+    next = "next"
+    previous = "previous"
+
 @app.put("/matches/{direction}", response_model=GenericResponse)
-async def change_step(direction: str, camera_ip: str):
-    if direction not in ["next", "previous"]:
+async def change_step(direction: Direction, camera_ip: str):
+    if direction not in Direction:
         raise HTTPException(status_code=400, detail="Invalid direction. Use 'next' or 'previous'.")
 
     matches = load_data(MATCH_DB_FILE)
