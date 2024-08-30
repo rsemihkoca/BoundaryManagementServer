@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    ports:
+      - "192.168.0.20:8546:8546"
+    environment:
+    volumes:
+      - ./boundary.json:/app/boundary.json
+    restart: always
+
