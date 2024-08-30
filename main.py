@@ -13,6 +13,25 @@ from pydantic import BaseModel
 # Local imports
 from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config, DefaultBoundaryCoordinates
 
+"""
+
+init kaldır direkt outerdan basla
+next ve back ile koordinat al güncelle current boundary koordinatlarını  cam ip ve ur ul neyse onları al
+kontroller:
+cam ip matchi var mı,
+düzgün bir dörtgen olmalı 
+
+outer hiçbiriyle çakışamaz
+table outer ile çakışamaz
+chair outer ile ve diğer chairler ile çakışamaz
+
+
+
+coordinate getall: bir kameranın tüm boundarylerini getir
+
+reset match init: boundaryleri default şekilde güncelle match json status init yap
+"""
+
 # Setup logging
 setup_logging()
 logger = logging.getLogger("app")
