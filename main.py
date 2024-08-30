@@ -1,16 +1,21 @@
+# Standard library imports
+import json
+import logging
+import os
+from contextlib import asynccontextmanager
+from enum import Enum
+from typing import List, Tuple, Union
+
+# Third-party imports
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from enum import Enum
-import json
-from typing import List, Union, Tuple
-from contextlib import asynccontextmanager
-import os
-import logging
+
+# Local imports
 from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config
+
+# Setup logging
 setup_logging()
-
 logger = logging.getLogger("app")
-
 logger.info(f"Boundary API version: {BOUNDARY_API_VERSION}")
 
 class Step(str, Enum):
@@ -44,31 +49,36 @@ class GenericResponse(BaseModel):
     success: bool
     data: Union[dict, list]
 
-def load_matches():
+def load_data(file_path: str) -> List[dict]:
     try:
-        with open(MATCH_DB_FILE, "r") as f:
+        with open(file_path, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return []
 
-def save_matches(matches):
-    with open(MATCH_DB_FILE, "w") as f:
-        json.dump(matches, f, indent=2)
+def save_data(file_path: str, data: List[dict]):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)
 
-def load_boundaries():
-    try:
-        with open(BOUNDARY_DB_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
+def get_step_order_for_capacity(capacity: int) -> List[Step]:
+    base_steps = [Step.INIT, Step.OUTER, Step.TABLE]
+    capacity_steps = [getattr(Step, f"STEP_{i}") for i in range(1, min(capacity + 1, 7))]
+    return base_steps + capacity_steps + [Step.FINAL]
 
-def save_boundaries(boundaries):
-    with open(BOUNDARY_DB_FILE, "w") as f:
-        json.dump(boundaries, f, indent=2)
+def get_next_or_previous_step(current_step: Step, capacity: int, move_forward: bool) -> Step:
+    step_order = get_step_order_for_capacity(capacity)
+    current_index = step_order.index(current_step)
+    new_index = current_index + (1 if move_forward else -1)
+    return step_order[min(max(new_index, 0), len(step_order) - 1)]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
+    for file_path in [BOUNDARY_DB_FILE, MATCH_DB_FILE]:
+        if not os.path.exists(file_path):
+            save_data(file_path, [])
     yield
+    # Shutdown
 
 app = FastAPI(lifespan=lifespan)
 
@@ -78,25 +88,24 @@ def read_root():
 
 @app.get("/matches", response_model=GenericResponse)
 async def get_matches():
-    return GenericResponse(success=True, data=load_matches())
+    return GenericResponse(success=True, data=load_data(MATCH_DB_FILE))
 
 @app.post("/matches", response_model=GenericResponse)
 async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
-    if not table_id or not camera_ip or not capacity:
+    if not all([table_id, camera_ip, capacity]):
         raise HTTPException(status_code=400, detail="Invalid request data.")
-    matches = load_matches()
-    for existing_match in matches:
-        if existing_match["table_id"] == table_id or existing_match["camera_ip"] == camera_ip:
-            raise HTTPException(status_code=400, detail="Match already exists.")
-    match = Match(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
-    matches.append(match.dict())
-    save_matches(matches)
-    
-    # Create boundaries
-    boundaries = load_boundaries()
-    boundary_types = ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]
-    for boundary_type in boundary_types:
-        boundary = Boundary(
+
+    matches = load_data(MATCH_DB_FILE)
+    if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
+        raise HTTPException(status_code=400, detail="Match already exists.")
+
+    new_match = Match(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
+    matches.append(new_match.dict())
+    save_data(MATCH_DB_FILE, matches)
+
+    boundaries = load_data(BOUNDARY_DB_FILE)
+    for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
+        new_boundary = Boundary(
             table_id=table_id,
             camera_ip=camera_ip,
             boundary_type=boundary_type,
@@ -105,88 +114,47 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
             LR_coord=(0, 0),
             LL_coord=(0, 0)
         )
-        boundaries.append(boundary.dict())
-    save_boundaries(boundaries)
-    
-    return GenericResponse(success=True, data=match.dict())
+        boundaries.append(new_boundary.dict())
+    save_data(BOUNDARY_DB_FILE, boundaries)
 
-@app.put("/matches/next", response_model=GenericResponse)
-async def next_step(camera_ip: str):
-    matches = load_matches()
+    return GenericResponse(success=True, data=new_match.dict())
+
+@app.put("/matches/{direction}", response_model=GenericResponse)
+async def change_step(direction: str, camera_ip: str):
+    if direction not in ["next", "previous"]:
+        raise HTTPException(status_code=400, detail="Invalid direction. Use 'next' or 'previous'.")
+
+    matches = load_data(MATCH_DB_FILE)
     for i, match in enumerate(matches):
         if match["camera_ip"] == camera_ip:
-            next_step = get_next_step(match["step"], match["capacity"])
-            matches[i]["step"] = next_step
-            save_matches(matches)
+            new_step = get_next_or_previous_step(
+                Step(match["step"]),
+                match["capacity"],
+                direction == "next"
+            )
+            matches[i]["step"] = new_step
+            save_data(MATCH_DB_FILE, matches)
             return GenericResponse(success=True, data=matches[i])
     raise HTTPException(status_code=404, detail="Match not found.")
-
-@app.put("/matches/previous", response_model=GenericResponse)
-async def previous_step(camera_ip: str):
-    matches = load_matches()
-    for i, match in enumerate(matches):
-        if match["camera_ip"] == camera_ip:
-            previous_step = get_previous_step(match["step"], match["capacity"])
-            matches[i]["step"] = previous_step
-            save_matches(matches)
-            return GenericResponse(success=True, data=matches[i])
-    raise HTTPException(status_code=404, detail="Match not found.")
-
-def get_step_order_for_capacity(capacity: int) -> List[Step]:
-    if capacity == 1:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.FINAL]
-    elif capacity == 2:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.FINAL]
-    elif capacity == 3:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.FINAL]
-    elif capacity == 4:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.FINAL]
-    elif capacity == 5:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.FINAL]
-    elif capacity == 6:
-        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.FINAL]
-    else:
-        raise ValueError("Unsupported capacity")
-
-def get_next_step(current_step: Step, capacity: int) -> Step:
-    step_order = get_step_order_for_capacity(capacity)
-    current_index = step_order.index(current_step)
-    if current_index + 1 < len(step_order):
-        return step_order[current_index + 1]
-    return Step.FINAL
-
-def get_previous_step(current_step: Step, capacity: int) -> Step:
-    step_order = get_step_order_for_capacity(capacity)
-    current_index = step_order.index(current_step)
-    if current_index - 1 >= 0:
-        return step_order[current_index - 1]
-    return Step.INIT
 
 @app.delete("/matches", response_model=GenericResponse)
 async def unmatch_table_and_camera(camera_ip: str):
-    matches = load_matches()
-    boundaries = load_boundaries()
-    deleted_match = None
-    for i, match in enumerate(matches):
-        if match["camera_ip"] == camera_ip:
-            deleted_match = matches.pop(i)
-            save_matches(matches)
-            break
-    
+    matches = load_data(MATCH_DB_FILE)
+    boundaries = load_data(BOUNDARY_DB_FILE)
+
+    deleted_match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
     if deleted_match:
-        # Remove related boundaries
+        matches = [m for m in matches if m["camera_ip"] != camera_ip]
         boundaries = [b for b in boundaries if b["camera_ip"] != camera_ip]
-        save_boundaries(boundaries)
-        return GenericResponse(success=True, data={"detail": "Match and related boundaries deleted successfully.", "deleted_match": deleted_match})
-    
+        save_data(MATCH_DB_FILE, matches)
+        save_data(BOUNDARY_DB_FILE, boundaries)
+        return GenericResponse(success=True, data={
+            "detail": "Match and related boundaries deleted successfully.",
+            "deleted_match": deleted_match
+        })
+
     raise HTTPException(status_code=404, detail="Match not found.")
 
 if __name__ == "__main__":
     import uvicorn
-    if not os.path.exists(BOUNDARY_DB_FILE):
-        with open(BOUNDARY_DB_FILE, "w") as f:
-            json.dump([], f)
-    if not os.path.exists(MATCH_DB_FILE):
-        with open(MATCH_DB_FILE, "w") as f:
-            json.dump([], f)
     uvicorn.run(app, host="0.0.0.0", port=8546, log_config=logging_config)
