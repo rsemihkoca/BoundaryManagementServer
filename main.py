@@ -169,6 +169,27 @@ async def unmatch_table_and_camera(camera_ip: str):
 
     raise HTTPException(status_code=404, detail="Match not found.")
 
+@app.get("/boundaries/{camera_ip}", response_model=GenericResponse)
+async def get_boundaries(camera_ip: str):
+    # Validation: Check if camera_ip is provided
+    if not camera_ip:
+        raise HTTPException(status_code=400, detail="Camera IP is required.")
+
+    # Check if the camera has a match
+    matches = load_data(MATCH_DB_FILE)
+    camera_match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
+
+    if not camera_match:
+        raise HTTPException(status_code=404, detail="No match found for the given camera IP.")
+
+    boundaries = load_data(BOUNDARY_DB_FILE)
+    camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
+
+    if not camera_boundaries:
+        raise HTTPException(status_code=404, detail="No boundaries found for the given camera IP.")
+
+    return GenericResponse(success=True, data=camera_boundaries)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080, log_config=logging_config)
