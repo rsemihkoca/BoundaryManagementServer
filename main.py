@@ -30,20 +30,23 @@ class Step(str, Enum):
     STEP_6 = "6"
     FINAL = "FINAL"
 
-class Match(BaseModel):
+class MatchTable(BaseModel):
     table_id: str
     camera_ip: str
     step: Step
     capacity: int
 
 class Boundary(BaseModel):
-    table_id: str
-    camera_ip: str
     boundary_type: str
     UL_coord: Dict[str, int]
     UR_coord: Dict[str, int]
     LR_coord: Dict[str, int]
     LL_coord: Dict[str, int]
+
+class BoundaryTable(BaseModel):
+    table_id: str
+    camera_ip: str
+    items: List[Boundary]
 
 class GenericResponse(BaseModel):
     success: bool
@@ -99,23 +102,29 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
         raise HTTPException(status_code=400, detail="Match already exists.")
 
-    new_match = Match(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
+    new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
     matches.append(new_match.dict())
     save_data(MATCH_DB_FILE, matches)
 
     boundaries = load_data(BOUNDARY_DB_FILE)
+    boundary_items = []
     for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
         default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
         new_boundary = Boundary(
-            table_id=table_id,
-            camera_ip=camera_ip,
             boundary_type=boundary_type,
             UL_coord=default_coords["UL"],
             UR_coord=default_coords["UR"],
             LR_coord=default_coords["LR"],
             LL_coord=default_coords["LL"]
         )
-        boundaries.append(new_boundary.dict())
+        boundary_items.append(new_boundary)
+    
+    new_boundary_table = BoundaryTable(
+        table_id=table_id,
+        camera_ip=camera_ip,
+        items=boundary_items
+    )
+    boundaries.append(new_boundary_table.dict())
     save_data(BOUNDARY_DB_FILE, boundaries)
 
     return GenericResponse(success=True, data=new_match.dict())
