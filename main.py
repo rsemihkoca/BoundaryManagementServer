@@ -77,7 +77,7 @@ async def get_matches():
     return GenericResponse(success=True, data=load_matches())
 
 @app.post("/matches", response_model=GenericResponse)
-async def create_match(table_id: str, camera_ip: str, capacity: int):
+async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     if not table_id or not camera_ip or not capacity:
         raise HTTPException(status_code=400, detail="Invalid request data.")
     matches = load_matches()
@@ -145,11 +145,11 @@ def get_previous_step(current_step: Step, capacity: int) -> Step:
         return step_order[current_index - 1]
     return Step.INIT
 
-@app.delete("/matches/{table_id}/{camera_ip}", response_model=dict)
-async def delete_match(table_id: str, camera_ip: str):
+@app.delete("/matches", response_model=dict)
+async def unmatch_table_and_camera(camera_ip: str):
     matches = load_matches()
     for i, match in enumerate(matches):
-        if match["table_id"] == table_id and match["camera_ip"] == camera_ip:
+        if match["camera_ip"] == camera_ip:
             deleted_match = matches.pop(i)
             save_matches(matches)
             return {"detail": "Match deleted successfully.", "deleted_match": deleted_match}
