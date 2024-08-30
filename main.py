@@ -1,34 +1,15 @@
-import io
-import logging
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from enum import Enum
 import json
-import requests
-import os
 from typing import List, Union
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from dotenv import load_dotenv
-from starlette.responses import StreamingResponse, JSONResponse
-from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config
-from enum import Enum
-from colorama import init, Fore, Style
 from contextlib import asynccontextmanager
-
-
-
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from enum import Enum
-import json
-from typing import List
-from datetime import datetime
-
-import sys
-
+import os
+import logging
+from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config
 setup_logging()
 
-
-
-logger = logging.getLogger("app")  # Replace with your logger name
+logger = logging.getLogger("app")
 
 logger.info(f"Boundary API version: {BOUNDARY_API_VERSION}")
 
@@ -81,13 +62,9 @@ def save_matches(matches):
     with open("matches.json", "w") as f:
         json.dump(matches, f, indent=2)
 
-
 @asynccontextmanager
-async def lifespan(app: FastAPI):          
-    # Prepare Database
+async def lifespan(app: FastAPI):
     yield
-    # Shutdown
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -95,14 +72,12 @@ app = FastAPI(lifespan=lifespan)
 def read_root():
     return GenericResponse(success=True, data={"message": "Boundary API is running."})
 
-@app.get("/matches", response_model=List[Match])
+@app.get("/matches", response_model=GenericResponse)
 async def get_matches():
-    return load_matches()
-
+    return GenericResponse(success=True, data=load_matches())
 
 @app.post("/matches", response_model=GenericResponse)
 async def create_match(table_id: str, camera_ip: str, capacity: int):
-
     if not table_id or not camera_ip or not capacity:
         raise HTTPException(status_code=400, detail="Invalid request data.")
     matches = load_matches()
@@ -114,16 +89,61 @@ async def create_match(table_id: str, camera_ip: str, capacity: int):
     save_matches(matches)
     return GenericResponse(success=True, data=match.dict())
 
-@app.put("/matches}", response_model=Match)
-async def update_match(table_id: str, camera_ip: str, step: Step):
+@app.put("/matches/next", response_model=GenericResponse)
+async def next_step(camera_ip: str):
     matches = load_matches()
     for i, match in enumerate(matches):
-        if match["table_id"] == table_id and match["camera_ip"] == camera_ip:
-            matches[i] = updated_match.dict()
+        if match["camera_ip"] == camera_ip:
+            next_step = get_next_step(match["step"], match["capacity"])
+            matches[i]["step"] = next_step
             save_matches(matches)
-            return updated_match
-    
+            return GenericResponse(success=True, data=matches[i])
     raise HTTPException(status_code=404, detail="Match not found.")
+
+@app.put("/matches/previous", response_model=GenericResponse)
+async def previous_step(camera_ip: str):
+    matches = load_matches()
+    for i, match in enumerate(matches):
+        if match["camera_ip"] == camera_ip:
+            previous_step = get_previous_step(match["step"], match["capacity"])
+            matches[i]["step"] = previous_step
+            save_matches(matches)
+            return GenericResponse(success=True, data=matches[i])
+    raise HTTPException(status_code=404, detail="Match not found.")
+
+def get_step_order_for_capacity(capacity: int) -> List[Step]:
+    if capacity == 1:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.FINAL]
+    elif capacity == 2:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.FINAL]
+    elif capacity == 3:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.FINAL]
+    elif capacity == 4:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.FINAL]
+    elif capacity == 5:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.FINAL]
+    elif capacity == 6:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.FINAL]
+    elif capacity == 7:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.STEP_7, Step.FINAL]
+    elif capacity == 8:
+        return [Step.INIT, Step.OUTER, Step.TABLE, Step.STEP_1, Step.STEP_2, Step.STEP_3, Step.STEP_4, Step.STEP_5, Step.STEP_6, Step.STEP_7, Step.STEP_8, Step.FINAL]
+    else:
+        raise ValueError("Unsupported capacity")
+
+def get_next_step(current_step: Step, capacity: int) -> Step:
+    step_order = get_step_order_for_capacity(capacity)
+    current_index = step_order.index(current_step)
+    if current_index + 1 < len(step_order):
+        return step_order[current_index + 1]
+    return Step.FINAL
+
+def get_previous_step(current_step: Step, capacity: int) -> Step:
+    step_order = get_step_order_for_capacity(capacity)
+    current_index = step_order.index(current_step)
+    if current_index - 1 >= 0:
+        return step_order[current_index - 1]
+    return Step.INIT
 
 @app.delete("/matches/{table_id}/{camera_ip}", response_model=dict)
 async def delete_match(table_id: str, camera_ip: str):
@@ -133,7 +153,6 @@ async def delete_match(table_id: str, camera_ip: str):
             deleted_match = matches.pop(i)
             save_matches(matches)
             return {"detail": "Match deleted successfully.", "deleted_match": deleted_match}
-    
     raise HTTPException(status_code=404, detail="Match not found.")
 
 if __name__ == "__main__":
@@ -144,5 +163,4 @@ if __name__ == "__main__":
     if not os.path.exists(MATCH_DB_FILE):
         with open(MATCH_DB_FILE, "w") as f:
             json.dump([], f)
-    
     uvicorn.run(app, host="0.0.0.0", port=8546, log_config=logging_config)
