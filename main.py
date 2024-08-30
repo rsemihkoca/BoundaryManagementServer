@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from enum import Enum
 import json
-from typing import List, Union
+from typing import List, Union, Tuple
 from contextlib import asynccontextmanager
 import os
 import logging
@@ -12,20 +12,6 @@ setup_logging()
 logger = logging.getLogger("app")
 
 logger.info(f"Boundary API version: {BOUNDARY_API_VERSION}")
-
-
-
-"""
-
-get match bütün matched clientlerı getir güncel
-
-
-boundary yarat: match işlemi table id ve kapasite lazım o kadar boundary yaratılacak camera id de lazım
-boundary sil: match'i boz ve boundary'leri sil
-get bounddary by camera ip
-update bounday
-
-"""
 
 class Step(str, Enum):
     INIT = "INIT"
@@ -49,10 +35,10 @@ class Boundary(BaseModel):
     table_id: str
     camera_ip: str
     boundary_type: str
-    UL_coord: Tuple(int, int)
-    UR_coord: Tuple(int, int)
-    LR_coord: Tuple(int, int)
-    LL_coord: Tuple(int, int)
+    UL_coord: Tuple[int, int]
+    UR_coord: Tuple[int, int]
+    LR_coord: Tuple[int, int]
+    LL_coord: Tuple[int, int]
 
 class GenericResponse(BaseModel):
     success: bool
@@ -60,14 +46,25 @@ class GenericResponse(BaseModel):
 
 def load_matches():
     try:
-        with open("matches.json", "r") as f:
+        with open(MATCH_DB_FILE, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return []
 
 def save_matches(matches):
-    with open("matches.json", "w") as f:
+    with open(MATCH_DB_FILE, "w") as f:
         json.dump(matches, f, indent=2)
+
+def load_boundaries():
+    try:
+        with open(BOUNDARY_DB_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+def save_boundaries(boundaries):
+    with open(BOUNDARY_DB_FILE, "w") as f:
+        json.dump(boundaries, f, indent=2)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,6 +91,23 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     match = Match(table_id=table_id, camera_ip=camera_ip, step=Step.INIT, capacity=capacity)
     matches.append(match.dict())
     save_matches(matches)
+    
+    # Create boundaries
+    boundaries = load_boundaries()
+    boundary_types = ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]
+    for boundary_type in boundary_types:
+        boundary = Boundary(
+            table_id=table_id,
+            camera_ip=camera_ip,
+            boundary_type=boundary_type,
+            UL_coord=(0, 0),
+            UR_coord=(0, 0),
+            LR_coord=(0, 0),
+            LL_coord=(0, 0)
+        )
+        boundaries.append(boundary.dict())
+    save_boundaries(boundaries)
+    
     return GenericResponse(success=True, data=match.dict())
 
 @app.put("/matches/next", response_model=GenericResponse)
@@ -148,14 +162,23 @@ def get_previous_step(current_step: Step, capacity: int) -> Step:
         return step_order[current_index - 1]
     return Step.INIT
 
-@app.delete("/matches", response_model=dict)
+@app.delete("/matches", response_model=GenericResponse)
 async def unmatch_table_and_camera(camera_ip: str):
     matches = load_matches()
+    boundaries = load_boundaries()
+    deleted_match = None
     for i, match in enumerate(matches):
         if match["camera_ip"] == camera_ip:
             deleted_match = matches.pop(i)
             save_matches(matches)
-            return {"detail": "Match deleted successfully.", "deleted_match": deleted_match}
+            break
+    
+    if deleted_match:
+        # Remove related boundaries
+        boundaries = [b for b in boundaries if b["camera_ip"] != camera_ip]
+        save_boundaries(boundaries)
+        return GenericResponse(success=True, data={"detail": "Match and related boundaries deleted successfully.", "deleted_match": deleted_match})
+    
     raise HTTPException(status_code=404, detail="Match not found.")
 
 if __name__ == "__main__":
