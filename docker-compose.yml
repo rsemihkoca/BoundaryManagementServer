@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - "192.168.0.20:8546:8546"
+      - "192.168.0.20:8080:8080"
     environment:
     volumes:
       - ./boundary.json:/app/boundary.json

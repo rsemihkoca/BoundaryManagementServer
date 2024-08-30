@@ -4,14 +4,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Dict, Any
 
 # Third-party imports
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Local imports
-from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config
+from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config, DefaultBoundaryCoordinates
 
 # Setup logging
 setup_logging()
@@ -40,10 +40,10 @@ class Boundary(BaseModel):
     table_id: str
     camera_ip: str
     boundary_type: str
-    UL_coord: Tuple[int, int]
-    UR_coord: Tuple[int, int]
-    LR_coord: Tuple[int, int]
-    LL_coord: Tuple[int, int]
+    UL_coord: Dict[str, int]
+    UR_coord: Dict[str, int]
+    LR_coord: Dict[str, int]
+    LL_coord: Dict[str, int]
 
 class GenericResponse(BaseModel):
     success: bool
@@ -105,14 +105,15 @@ async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
 
     boundaries = load_data(BOUNDARY_DB_FILE)
     for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
+        default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
         new_boundary = Boundary(
             table_id=table_id,
             camera_ip=camera_ip,
             boundary_type=boundary_type,
-            UL_coord=(0, 0),
-            UR_coord=(0, 0),
-            LR_coord=(0, 0),
-            LL_coord=(0, 0)
+            UL_coord=default_coords["UL"],
+            UR_coord=default_coords["UR"],
+            LR_coord=default_coords["LR"],
+            LL_coord=default_coords["LL"]
         )
         boundaries.append(new_boundary.dict())
     save_data(BOUNDARY_DB_FILE, boundaries)
@@ -157,4 +158,4 @@ async def unmatch_table_and_camera(camera_ip: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8546, log_config=logging_config)
+    uvicorn.run(app, host="0.0.0.0", port=8080, log_config=logging_config)

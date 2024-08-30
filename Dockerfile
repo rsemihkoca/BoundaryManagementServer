@@ -39,10 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Expose the port the app runs on
-EXPOSE 8546
+EXPOSE 8080
 
 # Define environment variable
 ENV PYTHONUNBUFFERED 1
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8546"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
