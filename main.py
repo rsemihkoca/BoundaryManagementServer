@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from enum import Enum
 from typing import List, Tuple, Union, Dict, Any
 from polygon_validator import PolygonValidator
+from intersection_validator import IntersectionValidator
 # Third-party imports
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
