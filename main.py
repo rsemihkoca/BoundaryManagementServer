@@ -7,7 +7,8 @@ from enum import Enum
 from typing import List, Tuple, Union, Dict, Any
 from polygon_validator import PolygonValidator
 # Third-party imports
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # Local imports
@@ -30,6 +31,18 @@ class Step(str, Enum):
     STEP_6 = "6"
     FINAL = "FINAL"
 
+    @classmethod
+    def MAX_CAPACITY(cls):
+        return cls.STEP_6
+
+    @classmethod
+    def MIN_CAPACITY(cls):
+        return cls.STEP_1
+
+    @classmethod
+    def check_capacity(cls, capacity: int):
+        return cls.STEP_1 <= capacity <= cls.STEP_6
+
 class MatchTable(BaseModel):
     table_id: str
     camera_ip: str
@@ -51,6 +64,7 @@ class BoundaryTable(BaseModel):
 class GenericResponse(BaseModel):
     success: bool
     data: Union[dict, list]
+    status_code: int = 200
 
 def load_data(file_path: str) -> List[dict]:
     try:
@@ -83,7 +97,18 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="Boundary API", version=BOUNDARY_API_VERSION)
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=GenericResponse(
+            success=False,
+            data={"detail": str(exc.detail)},
+            status_code=exc.status_code
+        ).dict()
+    )
 
 @app.get("/")
 def read_root():
@@ -96,11 +121,14 @@ async def get_matches():
 @app.post("/matches", response_model=GenericResponse)
 async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     if not all([table_id, camera_ip, capacity]):
-        raise HTTPException(status_code=400, detail="Invalid request data.")
+        return GenericResponse(success=False, data={"detail": "Invalid request data."}, status_code=400)
+
+    if not Step.check_capacity(capacity):
+        return GenericResponse(success=False, data={"detail": f"Invalid capacity. Must be between {Step.MIN_CAPACITY()} and {Step.MAX_CAPACITY()}."}, status_code=400)
 
     matches = load_data(MATCH_DB_FILE)
     if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
-        raise HTTPException(status_code=400, detail="Match already exists.")
+        return GenericResponse(success=False, data={"detail": "Match already exists."}, status_code=400)
 
     new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.OUTER, capacity=capacity)
     matches.append(new_match.dict())
@@ -133,23 +161,82 @@ class Direction(str, Enum):
     next = "next"
     previous = "previous"
 
-@app.put("/matches/{direction}", response_model=GenericResponse)
-async def change_step(direction: Direction, camera_ip: str):
-    if direction not in Direction:
-        raise HTTPException(status_code=400, detail="Invalid direction. Use 'next' or 'previous'.")
+class Coordinate(BaseModel):
+    x: int
+    y: int
+
+    def to_tuple(self) -> Tuple[int, int]:
+        return self.x, self.y
+
+class StepChangeRequest(BaseModel):
+    direction: Direction
+    camera_ip: str
+    UL_coord: Coordinate
+    UR_coord: Coordinate
+    LR_coord: Coordinate
+    LL_coord: Coordinate
+
+@app.put("/matches/change_step", response_model=GenericResponse)
+async def change_step(request: StepChangeRequest):
+    if request.direction not in Direction:
+        return GenericResponse(success=False, data={"detail": "Invalid direction. Use 'next' or 'previous'."}, status_code=400)
 
     matches = load_data(MATCH_DB_FILE)
-    for i, match in enumerate(matches):
-        if match["camera_ip"] == camera_ip:
-            new_step = get_next_or_previous_step(
-                Step(match["step"]),
-                match["capacity"],
-                direction == "next"
-            )
-            matches[i]["step"] = new_step
-            save_data(MATCH_DB_FILE, matches)
-            return GenericResponse(success=True, data=matches[i])
-    raise HTTPException(status_code=404, detail="Match not found.")
+    boundaries = load_data(BOUNDARY_DB_FILE)
+
+    match = next((m for m in matches if m["camera_ip"] == request.camera_ip), None)
+    if not match:
+        return GenericResponse(success=False, data={"detail": "Match not found."}, status_code=404)
+
+    current_step = Step(match["step"])
+    capacity = match["capacity"]
+
+    # Check if we're trying to go previous from OUTER or next from FINAL
+    if (current_step == Step.OUTER and request.direction == Direction.previous) or \
+       (current_step == Step.FINAL and request.direction == Direction.next):
+        return GenericResponse(success=False, data={"detail": f"Cannot move {request.direction} from {current_step} step."}, status_code=400)
+
+    # Validate the polygon
+    valid, message = PolygonValidator(
+        request.UL_coord.to_tuple(),
+        request.UR_coord.to_tuple(),
+        request.LR_coord.to_tuple(),
+        request.LL_coord.to_tuple()
+    ).is_valid_polygon()
+
+    if not valid:
+        return GenericResponse(success=False, data={"detail": message}, status_code=400)
+
+    # Update the current step's boundary coordinates
+    boundary = next((b for b in boundaries if b["camera_ip"] == request.camera_ip), None)
+    if not boundary:
+        return GenericResponse(success=False, data={"detail": "Boundary not found."}, status_code=404)
+
+    current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == current_step.value), None)
+    if current_step_boundary:
+        current_step_boundary.update({
+            "UL_coord": request.UL_coord.dict(),
+            "UR_coord": request.UR_coord.dict(),
+            "LR_coord": request.LR_coord.dict(),
+            "LL_coord": request.LL_coord.dict()
+        })
+
+    # Update the step after updating the coordinates
+    new_step = get_next_or_previous_step(
+        current_step,
+        capacity,
+        request.direction == Direction.next
+    )
+    match["step"] = new_step
+
+    # Save updated data
+    save_data(MATCH_DB_FILE, matches)
+    save_data(BOUNDARY_DB_FILE, boundaries)
+
+    return GenericResponse(success=True, data={
+        "updated_match": match,
+        "updated_boundary": current_step_boundary
+    })
 
 @app.delete("/matches", response_model=GenericResponse)
 async def unmatch_table_and_camera(camera_ip: str):
@@ -167,42 +254,41 @@ async def unmatch_table_and_camera(camera_ip: str):
             "deleted_match": deleted_match
         })
 
-    raise HTTPException(status_code=404, detail="Match not found.")
+    return GenericResponse(success=False, data={"detail": "Match not found."}, status_code=404)
 
 @app.get("/boundaries/{camera_ip}", response_model=GenericResponse)
 async def get_boundaries(camera_ip: str):
     # Validation: Check if camera_ip is provided
     if not camera_ip:
-        raise HTTPException(status_code=400, detail="Camera IP is required.")
+        return GenericResponse(success=False, data={"detail": "Camera IP is required."}, status_code=400)
 
     # Check if the camera has a match
     matches = load_data(MATCH_DB_FILE)
     camera_match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
 
     if not camera_match:
-        raise HTTPException(status_code=404, detail="No match found for the given camera IP.")
+        return GenericResponse(success=False, data={"detail": "No match found for the given camera IP."}, status_code=404)
 
     boundaries = load_data(BOUNDARY_DB_FILE)
     camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
 
     if not camera_boundaries:
-        raise HTTPException(status_code=404, detail="No boundaries found for the given camera IP.")
+        return GenericResponse(success=False, data={"detail": "No boundaries found for the given camera IP."}, status_code=404)
 
     return GenericResponse(success=True, data=camera_boundaries)
-
 
 @app.post("/boundaries/{camera_ip}/reset", response_model=GenericResponse)
 async def reset_boundaries(camera_ip: str):
     # Validation: Check if camera_ip is provided
     if not camera_ip:
-        raise HTTPException(status_code=400, detail="Camera IP is required.")
+        return GenericResponse(success=False, data={"detail": "Camera IP is required."}, status_code=400)
 
     # Check if the camera has a match
     matches = load_data(MATCH_DB_FILE)
     match_index = next((i for i, m in enumerate(matches) if m["camera_ip"] == camera_ip), None)
 
     if match_index is None:
-        raise HTTPException(status_code=404, detail="No match found for the given camera IP.")
+        return GenericResponse(success=False, data={"detail": "No match found for the given camera IP."}, status_code=404)
 
     # Get the match details
     match = matches[match_index]
@@ -218,7 +304,7 @@ async def reset_boundaries(camera_ip: str):
     boundary_index = next((i for i, b in enumerate(boundaries) if b["camera_ip"] == camera_ip), None)
 
     if boundary_index is None:
-        raise HTTPException(status_code=404, detail="No boundaries found for the given camera IP.")
+        return GenericResponse(success=False, data={"detail": "No boundaries found for the given camera IP."}, status_code=404)
 
     # Remove existing boundaries and add default coordinates
     boundary_items = []
