@@ -160,6 +160,14 @@ async def change_step(request: StepChangeRequest):
     if not match:
         raise HTTPException(status_code=404, detail="Match not found.")
 
+    current_step = Step(match["step"])
+    capacity = match["capacity"]
+
+    # Check if we're trying to go previous from OUTER or next from FINAL
+    if (current_step == Step.OUTER and request.direction == Direction.previous) or \
+       (current_step == Step.FINAL and request.direction == Direction.next):
+        raise HTTPException(status_code=400, detail=f"Cannot move {request.direction} from {current_step} step.")
+
     # Validate the polygon
     valid, message = PolygonValidator(
         request.UL_coord.to_tuple(),
@@ -173,8 +181,8 @@ async def change_step(request: StepChangeRequest):
 
     # Update the step
     new_step = get_next_or_previous_step(
-        Step(match["step"]),
-        match["capacity"],
+        current_step,
+        capacity,
         request.direction == Direction.next
     )
     match["step"] = new_step
