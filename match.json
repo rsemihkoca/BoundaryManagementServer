@@ -2,7 +2,7 @@
   {
     "table_id": "0_A1",
     "camera_ip": "192.168.0.67",
-    "step": "TABLE",
+    "step": "OUTER",
     "capacity": 4
   }
 ]

@@ -179,20 +179,12 @@ async def change_step(request: StepChangeRequest):
     if not valid:
         raise HTTPException(status_code=400, detail=message)
 
-    # Update the step
-    new_step = get_next_or_previous_step(
-        current_step,
-        capacity,
-        request.direction == Direction.next
-    )
-    match["step"] = new_step
-
-    # Update the boundary coordinates
+    # Update the current step's boundary coordinates
     boundary = next((b for b in boundaries if b["camera_ip"] == request.camera_ip), None)
     if not boundary:
         raise HTTPException(status_code=404, detail="Boundary not found.")
 
-    current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == new_step), None)
+    current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == current_step.value), None)
     if current_step_boundary:
         current_step_boundary.update({
             "UL_coord": request.UL_coord.dict(),
@@ -200,6 +192,14 @@ async def change_step(request: StepChangeRequest):
             "LR_coord": request.LR_coord.dict(),
             "LL_coord": request.LL_coord.dict()
         })
+
+    # Update the step after updating the coordinates
+    new_step = get_next_or_previous_step(
+        current_step,
+        capacity,
+        request.direction == Direction.next
+    )
+    match["step"] = new_step
 
     # Save updated data
     save_data(MATCH_DB_FILE, matches)
