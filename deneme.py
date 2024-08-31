@@ -1,8 +1,9 @@
-from math import atan2
+from math import atan
+from typing import Tuple
 
 class PolygonValidator:
-    def __init__(self, points):
-        self.points = [points['UL'], points['UR'], points['LR'], points['LL']]
+    def __init__(self, UL:Tuple[int,int], UR:Tuple[int,int], LR:Tuple[int,int], LL:Tuple[int,int],):
+        self.points = [UL, UR, LR, LL]
 
     def check_convex(self):
         def cross_product_sign(o, a, b):
@@ -105,9 +106,16 @@ case5 = {
     'LL': (4, 0)
 }
 
+"""
+Case 1 is valid: False
+Case 2 is valid: False
+Case 3 is valid: True
+Case 4 is valid: False
+Case 5 is valid: False
+"""
 cases = [case1, case2, case3, case4, case5]
 
 for i, case in enumerate(cases, 1):
-    validator = PolygonValidator(case)
+    validator = PolygonValidator(case["UL"], case["UR"], case["LR"], case["LL"])
     valid, message = validator.is_valid_polygon()
-    print(f"Case {i}: {message}")
+    print(f"Case {i}: {message} is valid {valid}")
