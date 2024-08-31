@@ -1,100 +1,23 @@
-# Standard library imports
-import json
 import logging
-import os
 from contextlib import asynccontextmanager
-from enum import Enum
-from typing import List, Tuple, Union, Dict, Any
-from polygon_validator import PolygonValidator
-from intersection_validator import IntersectionValidator
-# Third-party imports
-from fastapi import FastAPI, HTTPException, Request
+from typing import List, Dict, Any
+
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
-# Local imports
-from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, BOUNDARY_API_VERSION, setup_logging, logging_config, DefaultBoundaryCoordinates
-
+from config import BOUNDARY_API_VERSION, setup_logging, logging_config
+from models import GenericResponse, StepChangeRequest, MatchTable, BoundaryTable
+from services import MatchService, BoundaryService
+from dependencies import get_match_service, get_boundary_service
 
 # Setup logging
 setup_logging()
 logger = logging.getLogger("app")
 logger.info(f"Boundary API version: {BOUNDARY_API_VERSION}")
 
-class Step(str, Enum):
-    OUTER = "OUTER"
-    TABLE = "TABLE"
-    STEP_1 = "1"
-    STEP_2 = "2"
-    STEP_3 = "3"
-    STEP_4 = "4"
-    STEP_5 = "5"
-    STEP_6 = "6"
-    FINAL = "FINAL"
-
-    @classmethod
-    def MAX_CAPACITY(cls) -> int:
-        return int(cls.STEP_6)
-
-    @classmethod
-    def MIN_CAPACITY(cls)-> int:
-        return int(cls.STEP_1)
-
-    @classmethod
-    def check_capacity(cls, capacity: int):
-        return cls.MIN_CAPACITY() <= capacity <= cls.MAX_CAPACITY()
-
-class MatchTable(BaseModel):
-    table_id: str
-    camera_ip: str
-    step: Step
-    capacity: int
-
-class Boundary(BaseModel):
-    boundary_type: str
-    UL_coord: Dict[str, int]
-    UR_coord: Dict[str, int]
-    LR_coord: Dict[str, int]
-    LL_coord: Dict[str, int]
-
-class BoundaryTable(BaseModel):
-    table_id: str
-    camera_ip: str
-    items: List[Boundary]
-
-class GenericResponse(BaseModel):
-    success: bool
-    data: Union[dict, list]
-    status_code: int = 200
-
-def load_data(file_path: str) -> List[dict]:
-    try:
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-
-def save_data(file_path: str, data: List[dict]):
-    with open(file_path, "w") as f:
-        json.dump(data, f, indent=2)
-
-def get_step_order_for_capacity(capacity: int) -> List[Step]:
-    base_steps = [Step.OUTER, Step.TABLE]
-    capacity_steps = [getattr(Step, f"STEP_{i}") for i in range(1, min(capacity + 1, 7))]
-    return base_steps + capacity_steps + [Step.FINAL]
-
-def get_next_or_previous_step(current_step: Step, capacity: int, move_forward: bool) -> Step:
-    step_order = get_step_order_for_capacity(capacity)
-    current_index = step_order.index(current_step)
-    new_index = current_index + (1 if move_forward else -1)
-    return step_order[min(max(new_index, 0), len(step_order) - 1)]
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    for file_path in [BOUNDARY_DB_FILE, MATCH_DB_FILE]:
-        if not os.path.exists(file_path):
-            save_data(file_path, [])
     yield
     # Shutdown
 
@@ -116,224 +39,82 @@ def read_root():
     return GenericResponse(success=True, data={"message": "Boundary API is running."})
 
 @app.get("/matches", response_model=GenericResponse)
-async def get_matches():
-    return GenericResponse(success=True, data=load_data(MATCH_DB_FILE))
+async def get_matches(match_service: MatchService = Depends(get_match_service)):
+    matches = match_service.get_all_matches()
+    return GenericResponse(success=True, data=matches)
 
 @app.post("/matches", response_model=GenericResponse)
-async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
-    if not all([table_id, camera_ip, capacity]):
-        return GenericResponse(success=False, data={"detail": "Invalid request data."}, status_code=400)
-
-    if not Step.check_capacity(capacity):
-        return GenericResponse(success=False, data={"detail": f"Invalid capacity. Must be between {Step.MIN_CAPACITY()} and {Step.MAX_CAPACITY()}."}, status_code=400)
-
-    matches = load_data(MATCH_DB_FILE)
-    if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
-        return GenericResponse(success=False, data={"detail": "Match already exists."}, status_code=400)
-
-    new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.OUTER, capacity=capacity)
-    matches.append(new_match.dict())
-    save_data(MATCH_DB_FILE, matches)
-
-    boundaries = load_data(BOUNDARY_DB_FILE)
-    boundary_items = []
-    for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
-        default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
-        new_boundary = Boundary(
-            boundary_type=boundary_type,
-            UL_coord=default_coords["UL"],
-            UR_coord=default_coords["UR"],
-            LR_coord=default_coords["LR"],
-            LL_coord=default_coords["LL"]
-        )
-        boundary_items.append(new_boundary)
-    
-    new_boundary_table = BoundaryTable(
-        table_id=table_id,
-        camera_ip=camera_ip,
-        items=boundary_items
-    )
-    boundaries.append(new_boundary_table.dict())
-    save_data(BOUNDARY_DB_FILE, boundaries)
-
-    return GenericResponse(success=True, data=new_match.dict())
-
-class Direction(str, Enum):
-    next = "next"
-    previous = "previous"
-
-class Coordinate(BaseModel):
-    x: int
-    y: int
-
-    def to_tuple(self) -> Tuple[int, int]:
-        return self.x, self.y
-
-class StepChangeRequest(BaseModel):
-    direction: Direction
-    camera_ip: str
-    UL_coord: Coordinate
-    UR_coord: Coordinate
-    LR_coord: Coordinate
-    LL_coord: Coordinate
+async def match_table_and_camera(
+    table_id: str,
+    camera_ip: str,
+    capacity: int,
+    match_service: MatchService = Depends(get_match_service),
+    boundary_service: BoundaryService = Depends(get_boundary_service)
+):
+    try:
+        new_match = match_service.create_match(table_id, camera_ip, capacity)
+        boundary_service.create_boundaries(table_id, camera_ip, capacity)
+        return GenericResponse(success=True, data=new_match.dict())
+    except ValueError as e:
+        return GenericResponse(success=False, data={"detail": str(e)}, status_code=400)
 
 @app.put("/matches/change_step", response_model=GenericResponse)
-async def change_step(request: StepChangeRequest):
-    if request.direction not in Direction:
-        return GenericResponse(success=False, data={"detail": "Invalid direction. Use 'next' or 'previous'."}, status_code=400)
-
-    matches = load_data(MATCH_DB_FILE)
-    boundaries = load_data(BOUNDARY_DB_FILE)
-
-    match = next((m for m in matches if m["camera_ip"] == request.camera_ip), None)
-    if not match:
-        return GenericResponse(success=False, data={"detail": "Match not found."}, status_code=404)
-
-    current_step = Step(match["step"])
-    capacity = match["capacity"]
-
-    # Check if we're trying to go previous from OUTER or next from FINAL
-    if (current_step == Step.OUTER and request.direction == Direction.previous) or \
-       (current_step == Step.FINAL and request.direction == Direction.next):
-        return GenericResponse(success=False, data={"detail": f"Cannot move {request.direction} from {current_step} step."}, status_code=400)
-
-    # Validate the polygon
-    valid, message = PolygonValidator(
-        request.UL_coord.to_tuple(),
-        request.UR_coord.to_tuple(),
-        request.LR_coord.to_tuple(),
-        request.LL_coord.to_tuple()
-    ).is_valid_polygon()
-
-    if not valid:
-        return GenericResponse(success=False, data={"detail": message}, status_code=400)
-
-    # Update the current step's boundary coordinates
-    boundary = next((b for b in boundaries if b["camera_ip"] == request.camera_ip), None)
-    if not boundary:
-        return GenericResponse(success=False, data={"detail": "Boundary not found."}, status_code=404)
-
-    current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == current_step.value), None)
-    if current_step_boundary:
-        current_step_boundary.update({
-            "UL_coord": request.UL_coord.dict(),
-            "UR_coord": request.UR_coord.dict(),
-            "LR_coord": request.LR_coord.dict(),
-            "LL_coord": request.LL_coord.dict()
+async def change_step(
+    request: StepChangeRequest,
+    match_service: MatchService = Depends(get_match_service),
+    boundary_service: BoundaryService = Depends(get_boundary_service)
+):
+    try:
+        updated_match, updated_boundary = match_service.change_step(request, boundary_service)
+        return GenericResponse(success=True, data={
+            "updated_match": updated_match,
+            "updated_boundary": updated_boundary
         })
-
-    # Update the step after updating the coordinates
-    new_step = get_next_or_previous_step(
-        current_step,
-        capacity,
-        request.direction == Direction.next
-    )
-    match["step"] = new_step
-
-    # Save updated data
-    save_data(MATCH_DB_FILE, matches)
-    save_data(BOUNDARY_DB_FILE, boundaries)
-
-    return GenericResponse(success=True, data={
-        "updated_match": match,
-        "updated_boundary": current_step_boundary
-    })
+    except ValueError as e:
+        return GenericResponse(success=False, data={"detail": str(e)}, status_code=400)
 
 @app.delete("/matches", response_model=GenericResponse)
-async def unmatch_table_and_camera(camera_ip: str):
-    matches = load_data(MATCH_DB_FILE)
-    boundaries = load_data(BOUNDARY_DB_FILE)
-
-    deleted_match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
-    if deleted_match:
-        matches = [m for m in matches if m["camera_ip"] != camera_ip]
-        boundaries = [b for b in boundaries if b["camera_ip"] != camera_ip]
-        save_data(MATCH_DB_FILE, matches)
-        save_data(BOUNDARY_DB_FILE, boundaries)
+async def unmatch_table_and_camera(
+    camera_ip: str,
+    match_service: MatchService = Depends(get_match_service),
+    boundary_service: BoundaryService = Depends(get_boundary_service)
+):
+    try:
+        deleted_match = match_service.delete_match(camera_ip)
+        boundary_service.delete_boundaries(camera_ip)
         return GenericResponse(success=True, data={
             "detail": "Match and related boundaries deleted successfully.",
             "deleted_match": deleted_match
         })
-
-    return GenericResponse(success=False, data={"detail": "Match not found."}, status_code=404)
+    except ValueError as e:
+        return GenericResponse(success=False, data={"detail": str(e)}, status_code=404)
 
 @app.get("/boundaries/{camera_ip}", response_model=GenericResponse)
-async def get_boundaries(camera_ip: str):
-    # Validation: Check if camera_ip is provided
-    if not camera_ip:
-        return GenericResponse(success=False, data={"detail": "Camera IP is required."}, status_code=400)
-
-    # Check if the camera has a match
-    matches = load_data(MATCH_DB_FILE)
-    camera_match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
-
-    if not camera_match:
-        return GenericResponse(success=False, data={"detail": "No match found for the given camera IP."}, status_code=404)
-
-    boundaries = load_data(BOUNDARY_DB_FILE)
-    camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
-
-    if not camera_boundaries:
-        return GenericResponse(success=False, data={"detail": "No boundaries found for the given camera IP."}, status_code=404)
-
-    return GenericResponse(success=True, data=camera_boundaries)
+async def get_boundaries(
+    camera_ip: str,
+    boundary_service: BoundaryService = Depends(get_boundary_service)
+):
+    try:
+        boundaries = boundary_service.get_boundaries(camera_ip)
+        return GenericResponse(success=True, data=boundaries)
+    except ValueError as e:
+        return GenericResponse(success=False, data={"detail": str(e)}, status_code=404)
 
 @app.post("/boundaries/{camera_ip}/reset", response_model=GenericResponse)
-async def reset_boundaries(camera_ip: str):
-    # Validation: Check if camera_ip is provided
-    if not camera_ip:
-        return GenericResponse(success=False, data={"detail": "Camera IP is required."}, status_code=400)
-
-    # Check if the camera has a match
-    matches = load_data(MATCH_DB_FILE)
-    match_index = next((i for i, m in enumerate(matches) if m["camera_ip"] == camera_ip), None)
-
-    if match_index is None:
-        return GenericResponse(success=False, data={"detail": "No match found for the given camera IP."}, status_code=404)
-
-    # Get the match details
-    match = matches[match_index]
-    table_id = match["table_id"]
-    capacity = match["capacity"]
-
-    # Update match status to OUTER
-    matches[match_index]["step"] = Step.OUTER.value
-    save_data(MATCH_DB_FILE, matches)
-
-    # Reset boundaries
-    boundaries = load_data(BOUNDARY_DB_FILE)
-    boundary_index = next((i for i, b in enumerate(boundaries) if b["camera_ip"] == camera_ip), None)
-
-    if boundary_index is None:
-        return GenericResponse(success=False, data={"detail": "No boundaries found for the given camera IP."}, status_code=404)
-
-    # Remove existing boundaries and add default coordinates
-    boundary_items = []
-    for boundary_type in ["OUTER", "TABLE"] + [str(i) for i in range(1, capacity + 1)]:
-        default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
-        new_boundary = Boundary(
-            boundary_type=boundary_type,
-            UL_coord=default_coords["UL"],
-            UR_coord=default_coords["UR"],
-            LR_coord=default_coords["LR"],
-            LL_coord=default_coords["LL"]
-        )
-        boundary_items.append(new_boundary.dict())
-
-    new_boundary_table = BoundaryTable(
-        table_id=table_id,
-        camera_ip=camera_ip,
-        items=boundary_items
-    )
-
-    boundaries[boundary_index] = new_boundary_table.dict()
-    save_data(BOUNDARY_DB_FILE, boundaries)
-
-    return GenericResponse(success=True, data={
-        "message": "Boundaries reset successfully",
-        "updated_match": matches[match_index],
-        "updated_boundaries": new_boundary_table.dict()
-    })
+async def reset_boundaries(
+    camera_ip: str,
+    match_service: MatchService = Depends(get_match_service),
+    boundary_service: BoundaryService = Depends(get_boundary_service)
+):
+    try:
+        updated_match, updated_boundaries = boundary_service.reset_boundaries(camera_ip, match_service)
+        return GenericResponse(success=True, data={
+            "message": "Boundaries reset successfully",
+            "updated_match": updated_match,
+            "updated_boundaries": updated_boundaries
+        })
+    except ValueError as e:
+        return GenericResponse(success=False, data={"detail": str(e)}, status_code=404)
 
 if __name__ == "__main__":
     import uvicorn

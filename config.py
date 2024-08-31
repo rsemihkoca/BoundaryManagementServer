@@ -8,10 +8,8 @@ load_dotenv()
 
 
 BOUNDARY_API_VERSION = os.environ.get("BOUNDARY_API_VERSION")
-
-# Camera settings
-BOUNDARY_DB_FILE = "./boundary.json"
 MATCH_DB_FILE = "./match.json"
+BOUNDARY_DB_FILE = "./boundary.json"
 
 # Logging settings
 logging_config = {
