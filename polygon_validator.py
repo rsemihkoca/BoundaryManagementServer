@@ -116,6 +116,5 @@ Case 5 is valid: False
 cases = [case1, case2, case3, case4, case5]
 
 for i, case in enumerate(cases, 1):
-    validator = PolygonValidator(case["UL"], case["UR"], case["LR"], case["LL"])
-    valid, message = validator.is_valid_polygon()
+    valid, message = PolygonValidator(case["UL"], case["UR"], case["LR"], case["LL"]).is_valid_polygon()
     print(f"Case {i}: {message} is valid {valid}")

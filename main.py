@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import List, Tuple, Union, Dict, Any
-
+from polygon_validator import PolygonValidator
 # Third-party imports
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
