@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="Boundary API", version=BOUNDARY_API_VERSION)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
