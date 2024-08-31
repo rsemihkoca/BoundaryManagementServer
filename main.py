@@ -31,6 +31,18 @@ class Step(str, Enum):
     STEP_6 = "6"
     FINAL = "FINAL"
 
+    @classmethod
+    def MAX_CAPACITY(cls):
+        return cls.STEP_6
+
+    @classmethod
+    def MIN_CAPACITY(cls):
+        return cls.STEP_1
+
+    @classmethod
+    def check_capacity(cls, capacity: int):
+        return cls.STEP_1 <= capacity <= cls.STEP_6
+
 class MatchTable(BaseModel):
     table_id: str
     camera_ip: str
@@ -110,6 +122,9 @@ async def get_matches():
 async def match_table_and_camera(table_id: str, camera_ip: str, capacity: int):
     if not all([table_id, camera_ip, capacity]):
         return GenericResponse(success=False, data={"detail": "Invalid request data."}, status_code=400)
+
+    if not Step.check_capacity(capacity):
+        return GenericResponse(success=False, data={"detail": f"Invalid capacity. Must be between {Step.MIN_CAPACITY()} and {Step.MAX_CAPACITY()}."}, status_code=400)
 
     matches = load_data(MATCH_DB_FILE)
     if any(m["table_id"] == table_id or m["camera_ip"] == camera_ip for m in matches):
