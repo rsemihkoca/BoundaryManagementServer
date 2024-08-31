@@ -133,23 +133,74 @@ class Direction(str, Enum):
     next = "next"
     previous = "previous"
 
-@app.put("/matches/{direction}", response_model=GenericResponse)
-async def change_step(direction: Direction, camera_ip: str):
-    if direction not in Direction:
+class Coordinate(BaseModel):
+    x: int
+    y: int
+
+    def to_tuple(self) -> Tuple[int, int]:
+        return self.x, self.y
+
+class StepChangeRequest(BaseModel):
+    direction: Direction
+    camera_ip: str
+    UL_coord: Coordinate
+    UR_coord: Coordinate
+    LR_coord: Coordinate
+    LL_coord: Coordinate
+
+@app.put("/matches/change_step", response_model=GenericResponse)
+async def change_step(request: StepChangeRequest):
+    if request.direction not in Direction:
         raise HTTPException(status_code=400, detail="Invalid direction. Use 'next' or 'previous'.")
 
     matches = load_data(MATCH_DB_FILE)
-    for i, match in enumerate(matches):
-        if match["camera_ip"] == camera_ip:
-            new_step = get_next_or_previous_step(
-                Step(match["step"]),
-                match["capacity"],
-                direction == "next"
-            )
-            matches[i]["step"] = new_step
-            save_data(MATCH_DB_FILE, matches)
-            return GenericResponse(success=True, data=matches[i])
-    raise HTTPException(status_code=404, detail="Match not found.")
+    boundaries = load_data(BOUNDARY_DB_FILE)
+
+    match = next((m for m in matches if m["camera_ip"] == request.camera_ip), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    # Validate the polygon
+    valid, message = PolygonValidator(
+        request.UL_coord.to_tuple(),
+        request.UR_coord.to_tuple(),
+        request.LR_coord.to_tuple(),
+        request.LL_coord.to_tuple()
+    ).is_valid_polygon()
+
+    if not valid:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Update the step
+    new_step = get_next_or_previous_step(
+        Step(match["step"]),
+        match["capacity"],
+        request.direction == Direction.next
+    )
+    match["step"] = new_step
+
+    # Update the boundary coordinates
+    boundary = next((b for b in boundaries if b["camera_ip"] == request.camera_ip), None)
+    if not boundary:
+        raise HTTPException(status_code=404, detail="Boundary not found.")
+
+    current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == new_step), None)
+    if current_step_boundary:
+        current_step_boundary.update({
+            "UL_coord": request.UL_coord.dict(),
+            "UR_coord": request.UR_coord.dict(),
+            "LR_coord": request.LR_coord.dict(),
+            "LL_coord": request.LL_coord.dict()
+        })
+
+    # Save updated data
+    save_data(MATCH_DB_FILE, matches)
+    save_data(BOUNDARY_DB_FILE, boundaries)
+
+    return GenericResponse(success=True, data={
+        "updated_match": match,
+        "updated_boundary": current_step_boundary
+    })
 
 @app.delete("/matches", response_model=GenericResponse)
 async def unmatch_table_and_camera(camera_ip: str):

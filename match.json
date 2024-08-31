@@ -1,8 +1,8 @@
 [
   {
-    "table_id": "0_A1",
+    "table_id": "0_B2",
     "camera_ip": "192.168.0.67",
-    "step": "4",
+    "step": "OUTER",
     "capacity": 4
   }
 ]

@@ -113,8 +113,8 @@ Case 3 is valid: True
 Case 4 is valid: False
 Case 5 is valid: False
 """
-cases = [case1, case2, case3, case4, case5]
+# cases = [case1, case2, case3, case4, case5]
 
-for i, case in enumerate(cases, 1):
-    valid, message = PolygonValidator(case["UL"], case["UR"], case["LR"], case["LL"]).is_valid_polygon()
-    print(f"Case {i}: {message} is valid {valid}")
+# for i, case in enumerate(cases, 1):
+    # valid, message = PolygonValidator(case["UL"], case["UR"], case["LR"], case["LL"]).is_valid_polygon()
+    # print(f"Case {i}: {message} is valid {valid}")
