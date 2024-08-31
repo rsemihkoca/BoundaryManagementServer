@@ -7,4 +7,3 @@ services:
       - ./boundary.json:/app/boundary.json
       - ./match.json:/app/match.json
     restart: always
-
