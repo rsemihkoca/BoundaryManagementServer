@@ -33,16 +33,16 @@ class Step(str, Enum):
     FINAL = "FINAL"
 
     @classmethod
-    def MAX_CAPACITY(cls):
-        return cls.STEP_6
+    def MAX_CAPACITY(cls) -> int:
+        return int(cls.STEP_6)
 
     @classmethod
-    def MIN_CAPACITY(cls):
-        return cls.STEP_1
+    def MIN_CAPACITY(cls)-> int:
+        return int(cls.STEP_1)
 
     @classmethod
     def check_capacity(cls, capacity: int):
-        return cls.STEP_1 <= capacity <= cls.STEP_6
+        return cls.MIN_CAPACITY() <= capacity <= cls.MAX_CAPACITY()
 
 class MatchTable(BaseModel):
     table_id: str
