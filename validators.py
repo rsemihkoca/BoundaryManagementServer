@@ -1,7 +1,7 @@
 
 from math import atan
 from typing import Tuple
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 class IntersectionValidator:
     def __init__(self, quad1, quad2):

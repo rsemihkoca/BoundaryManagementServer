@@ -1,5 +1,5 @@
 services:
-  boundary-api:
+  api:
     build: .
     ports:
       - "192.168.0.20:8080:8080"
