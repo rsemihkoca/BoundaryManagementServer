@@ -88,89 +88,83 @@ class BoundaryService:
         if not boundary:
             raise ValueError("Boundary not found.")
 
-        # Validate the polygon is convex, non-self-intersecting
-        valid, message = PolygonValidator(
+        # Validate the polygon is convex and non-self-intersecting
+        new_coords = [
             request.UL_coord.to_tuple(),
             request.UR_coord.to_tuple(),
             request.LR_coord.to_tuple(),
             request.LL_coord.to_tuple()
-        ).is_valid_polygon()
-
+        ]
+        valid, message = PolygonValidator(*new_coords).is_valid_polygon()
         if not valid:
             raise ValueError(message)
-        
+
+        # Get the current boundary being updated
+        current_boundary = next((item for item in boundary["items"] if item["boundary_type"] == current_step.value), None)
+        if not current_boundary:
+            raise ValueError(f"No boundary found for step {current_step.value}")
+
+        # Perform boundary-specific validations
+        self._validate_boundary_placement(boundary["items"], current_step, new_coords)
+
+        # Update the boundary
+        current_boundary.update({
+            "UL_coord": request.UL_coord.dict(),
+            "UR_coord": request.UR_coord.dict(),
+            "LR_coord": request.LR_coord.dict(),
+            "LL_coord": request.LL_coord.dict()
+        })
+
+        save_data(BOUNDARY_DB_FILE, boundaries)
+        return current_boundary
+
+    def _validate_boundary_placement(self, boundary_items: List[Dict[str, Any]], current_step: Step, new_coords: List[Tuple[float, float]]):
         if current_step == Step.OUTER:
-            # all boundaries - outer(existing one since we are updating it)
-            other_boundaries =  next((item for item in boundary["items"] if item["boundary_type"] != "OUTER"), None)
-            for item in other_boundaries:
-                valid, message = IntersectionValidator(
-                    request.UL_coord.to_tuple(),
-                    request.UR_coord.to_tuple(),
-                    request.LR_coord.to_tuple(),
-                    request.LL_coord.to_tuple(),
+            self._validate_outer_boundary(boundary_items, new_coords)
+        elif current_step == Step.TABLE:
+            self._validate_table_boundary(boundary_items, new_coords)
+        else:
+            self._validate_numbered_boundary(boundary_items, current_step, new_coords)
+
+    def _validate_outer_boundary(self, boundary_items: List[Dict[str, Any]], new_coords: List[Tuple[float, float]]):
+        for item in boundary_items:
+            if item["boundary_type"] != "OUTER":
+                other_coords = [
                     item["UL_coord"].to_tuple(),
                     item["UR_coord"].to_tuple(),
                     item["LR_coord"].to_tuple(),
                     item["LL_coord"].to_tuple()
-                ).is_valid_placement()
-
+                ]
+                valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
                 if not valid:
-                    raise ValueError(f"Boundary {current_step.value} intersects with {item['boundary_type']} boundary.")
-        
-        else if current_step == Step.TABLE:
-            # all boundaries - table, all numbers = only outer
-            outer_boundary = next((item for item in boundary["items"] if item["boundary_type"] == "OUTER"), None)
-            valid, message = IntersectionValidator(
-                request.UL_coord.to_tuple(),
-                request.UR_coord.to_tuple(),
-                request.LR_coord.to_tuple(),
-                request.LL_coord.to_tuple(),
+                    raise ValueError(f"OUTER boundary intersects with {item['boundary_type']} boundary.")
+
+    def _validate_table_boundary(self, boundary_items: List[Dict[str, Any]], new_coords: List[Tuple[float, float]]):
+        outer_boundary = next((item for item in boundary_items if item["boundary_type"] == "OUTER"), None)
+        if outer_boundary:
+            outer_coords = [
                 outer_boundary["UL_coord"].to_tuple(),
                 outer_boundary["UR_coord"].to_tuple(),
                 outer_boundary["LR_coord"].to_tuple(),
                 outer_boundary["LL_coord"].to_tuple()
-            ).is_valid_placement()
-
+            ]
+            valid, message = IntersectionValidator(*new_coords, *outer_coords).is_valid_placement()
             if not valid:
-                raise ValueError(f"Boundary {current_step.value} intersects with OUTER boundary.")
-        
-        else:
-            # for example 1 not intersect outer, 2,3,4 is for capacity 4 it can intersect table
-            other_boundaries =  next((item for item in boundary["items"] if item["boundary_type"] != current_step.value or item["boundary_type"] != "TABLE"), None)
-            for item in other_boundaries:
-                valid, message = IntersectionValidator(
-                    request.UL_coord.to_tuple(),
-                    request.UR_coord.to_tuple(),
-                    request.LR_coord.to_tuple(),
-                    request.LL_coord.to_tuple(),
+                raise ValueError("TABLE boundary intersects with OUTER boundary.")
+
+    def _validate_numbered_boundary(self, boundary_items: List[Dict[str, Any]], current_step: Step, new_coords: List[Tuple[float, float]]):
+        for item in boundary_items:
+            if item["boundary_type"] not in [current_step.value, "TABLE"]:
+                other_coords = [
                     item["UL_coord"].to_tuple(),
                     item["UR_coord"].to_tuple(),
                     item["LR_coord"].to_tuple(),
                     item["LL_coord"].to_tuple()
-                ).is_valid_placement()
-
+                ]
+                valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
                 if not valid:
                     raise ValueError(f"Boundary {current_step.value} intersects with {item['boundary_type']} boundary.")
-
-
-
-        # Validate the boundary rules
-        # if boundary["boundary_type"] == "OUTER": it can not have any intersection with other boundaries except existing "OUTER" boundary record
-        # if boundary["boundary_type"] == "TABLE": it can not have any intersection with "OUTER" boundary
-        # if boundary["boundary_type"] ==  is a number: it can not have any intersection with "OUTER and every other number boundary except the previous one"
-        
-
-        current_step_boundary = next((item for item in boundary["items"] if item["boundary_type"] == current_step.value), None)
-        if current_step_boundary:
-            current_step_boundary.update({
-                "UL_coord": request.UL_coord.dict(),
-                "UR_coord": request.UR_coord.dict(),
-                "LR_coord": request.LR_coord.dict(),
-                "LL_coord": request.LL_coord.dict()
-            })
-        save_data(BOUNDARY_DB_FILE, boundaries)
-        return current_step_boundary
-
+                    
     def get_boundaries(self, camera_ip: str) -> Dict[str, Any]:
         boundaries = load_data(BOUNDARY_DB_FILE)
         camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
