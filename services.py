@@ -1,7 +1,7 @@
 import json
 from typing import List, Tuple, Dict, Any
-from models import MatchTable, BoundaryTable, Step, StepChangeRequest, Boundary, Direction, Boundary
-from utils import load_data, save_data, get_step_order_for_capacity, get_next_or_previous_step
+from models import MatchTable, BoundaryTable, Step, StepChangeRequest, Direction, Boundary, Coordinate
+from utils import load_data, save_data, get_next_or_previous_step
 from validators import PolygonValidator, IntersectionValidator
 from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, DefaultBoundaryCoordinates
 
@@ -67,10 +67,10 @@ class BoundaryService:
             default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
             new_boundary = Boundary(
                 boundary_type=boundary_type,
-                UL_coord=default_coords["UL"],
-                UR_coord=default_coords["UR"],
-                LR_coord=default_coords["LR"],
-                LL_coord=default_coords["LL"]
+                UL_coord=Coordinate(**default_coords["UL"]),
+                UR_coord=Coordinate(**default_coords["UR"]),
+                LR_coord=Coordinate(**default_coords["LR"]),
+                LL_coord=Coordinate(**default_coords["LL"])
             )
             boundary_items.append(new_boundary)
         
@@ -118,7 +118,7 @@ class BoundaryService:
         save_data(BOUNDARY_DB_FILE, boundaries)
         return current_boundary
 
-    def _validate_boundary_placement(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[float, float]]):
+    def _validate_boundary_placement(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[int, int]]):
         if current_step == Step.OUTER:
             self._validate_outer_boundary(boundary_items, new_coords)
         elif current_step == Step.TABLE:
@@ -126,45 +126,45 @@ class BoundaryService:
         else:
             self._validate_numbered_boundary(boundary_items, current_step, new_coords)
 
-    def _validate_outer_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[float, float]]):
+    def _validate_outer_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[int, int]]):
         for item in boundary_items:
             if item["boundary_type"] != "OUTER":
                 other_coords = [
-                    item["UL_coord"].to_tuple(),
-                    item["UR_coord"].to_tuple(),
-                    item["LR_coord"].to_tuple(),
-                    item["LL_coord"].to_tuple()
+                    Coordinate(**item["UL_coord"]).to_tuple(),
+                    Coordinate(**item["UR_coord"]).to_tuple(),
+                    Coordinate(**item["LR_coord"]).to_tuple(),
+                    Coordinate(**item["LL_coord"]).to_tuple()
                 ]
                 valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
                 if not valid:
                     raise ValueError(f"OUTER boundary intersects with {item['boundary_type']} boundary.")
 
-    def _validate_table_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[float, float]]):
+    def _validate_table_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[int, int]]):
         outer_boundary = next((item for item in boundary_items if item["boundary_type"] == "OUTER"), None)
         if outer_boundary:
             outer_coords = [
-                outer_boundary["UL_coord"].to_tuple(),
-                outer_boundary["UR_coord"].to_tuple(),
-                outer_boundary["LR_coord"].to_tuple(),
-                outer_boundary["LL_coord"].to_tuple()
+                Coordinate(**outer_boundary["UL_coord"]).to_tuple(),
+                Coordinate(**outer_boundary["UR_coord"]).to_tuple(),
+                Coordinate(**outer_boundary["LR_coord"]).to_tuple(),
+                Coordinate(**outer_boundary["LL_coord"]).to_tuple()
             ]
             valid, message = IntersectionValidator(*new_coords, *outer_coords).is_valid_placement()
             if not valid:
                 raise ValueError("TABLE boundary intersects with OUTER boundary.")
 
-    def _validate_numbered_boundary(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[float, float]]):
+    def _validate_numbered_boundary(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[int, int]]):
         for item in boundary_items:
             if item["boundary_type"] not in [current_step.value, "TABLE"]:
                 other_coords = [
-                    item["UL_coord"].to_tuple(),
-                    item["UR_coord"].to_tuple(),
-                    item["LR_coord"].to_tuple(),
-                    item["LL_coord"].to_tuple()
+                    Coordinate(**item["UL_coord"]).to_tuple(),
+                    Coordinate(**item["UR_coord"]).to_tuple(),
+                    Coordinate(**item["LR_coord"]).to_tuple(),
+                    Coordinate(**item["LL_coord"]).to_tuple()
                 ]
                 valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
                 if not valid:
                     raise ValueError(f"Boundary {current_step.value} intersects with {item['boundary_type']} boundary.")
-                    
+
     def get_boundaries(self, camera_ip: str) -> Dict[str, Any]:
         boundaries = load_data(BOUNDARY_DB_FILE)
         camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
@@ -177,7 +177,7 @@ class BoundaryService:
         boundaries = [b for b in boundaries if b["camera_ip"] != camera_ip]
         save_data(BOUNDARY_DB_FILE, boundaries)
 
-    def reset_boundaries(self, camera_ip: str, match_service: MatchService) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def reset_boundaries(self, camera_ip: str, match_service: 'MatchService') -> Tuple[Dict[str, Any], Dict[str, Any]]:
         matches = match_service.get_all_matches()
         match = next((m for m in matches if m["camera_ip"] == camera_ip), None)
         if not match:
@@ -199,10 +199,10 @@ class BoundaryService:
             default_coords = DefaultBoundaryCoordinates.get_default_coordinates(boundary_type, capacity)
             new_boundary = Boundary(
                 boundary_type=boundary_type,
-                UL_coord=default_coords["UL"],
-                UR_coord=default_coords["UR"],
-                LR_coord=default_coords["LR"],
-                LL_coord=default_coords["LL"]
+                UL_coord=Coordinate(**default_coords["UL"]),
+                UR_coord=Coordinate(**default_coords["UR"]),
+                LR_coord=Coordinate(**default_coords["LR"]),
+                LL_coord=Coordinate(**default_coords["LL"])
             )
             boundary_items.append(new_boundary.dict())
 
