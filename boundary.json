@@ -4,26 +4,25 @@
     "camera_ip": "192.168.0.64",
     "items": [
       {
-        "boundary_type": "OUTER",
         "UL_coord": {
-          "x": 10,
-          "y": 10
+          "x": 0,
+          "y": 4
         },
         "UR_coord": {
-          "x": 630,
-          "y": 10
+          "x": 4,
+          "y": 4
         },
         "LR_coord": {
-          "x": 630,
-          "y": 470
+          "x": 4,
+          "y": 0
         },
         "LL_coord": {
-          "x": 10,
-          "y": 470
-        }
+          "x": 0,
+          "y": 0
+        },
+        "boundary_type": "OUTER"
       },
       {
-        "boundary_type": "TABLE",
         "UL_coord": {
           "x": 50,
           "y": 50
