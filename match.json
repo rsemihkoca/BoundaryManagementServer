@@ -1,18 +1,12 @@
 [
   {
-    "table_id": "0_A1",
-    "camera_ip": "192.168.0.67",
-    "step": "OUTER",
-    "capacity": 4
-  },
-  {
     "table_id": "0_B2",
     "camera_ip": "192.168.0.64",
     "step": "OUTER",
     "capacity": 4
   },
   {
-    "table_id": "0_C2",
+    "table_id": "0_B3",
     "camera_ip": "192.168.0.65",
     "step": "OUTER",
     "capacity": 4

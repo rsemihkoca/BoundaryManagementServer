@@ -1,6 +1,6 @@
 import json
 from typing import List, Tuple, Dict, Any
-from models import MatchTable, BoundaryTable, Step, StepChangeRequest, Boundary
+from models import MatchTable, BoundaryTable, Step, StepChangeRequest, Boundary, Direction, Boundary
 from utils import load_data, save_data, get_step_order_for_capacity, get_next_or_previous_step
 from validators import PolygonValidator, IntersectionValidator
 from config import BOUNDARY_DB_FILE, MATCH_DB_FILE, DefaultBoundaryCoordinates
@@ -118,7 +118,7 @@ class BoundaryService:
         save_data(BOUNDARY_DB_FILE, boundaries)
         return current_boundary
 
-    def _validate_boundary_placement(self, boundary_items: List[Dict[str, Any]], current_step: Step, new_coords: List[Tuple[float, float]]):
+    def _validate_boundary_placement(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[float, float]]):
         if current_step == Step.OUTER:
             self._validate_outer_boundary(boundary_items, new_coords)
         elif current_step == Step.TABLE:
@@ -126,7 +126,7 @@ class BoundaryService:
         else:
             self._validate_numbered_boundary(boundary_items, current_step, new_coords)
 
-    def _validate_outer_boundary(self, boundary_items: List[Dict[str, Any]], new_coords: List[Tuple[float, float]]):
+    def _validate_outer_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[float, float]]):
         for item in boundary_items:
             if item["boundary_type"] != "OUTER":
                 other_coords = [
@@ -139,7 +139,7 @@ class BoundaryService:
                 if not valid:
                     raise ValueError(f"OUTER boundary intersects with {item['boundary_type']} boundary.")
 
-    def _validate_table_boundary(self, boundary_items: List[Dict[str, Any]], new_coords: List[Tuple[float, float]]):
+    def _validate_table_boundary(self, boundary_items: List[Boundary], new_coords: List[Tuple[float, float]]):
         outer_boundary = next((item for item in boundary_items if item["boundary_type"] == "OUTER"), None)
         if outer_boundary:
             outer_coords = [
@@ -152,7 +152,7 @@ class BoundaryService:
             if not valid:
                 raise ValueError("TABLE boundary intersects with OUTER boundary.")
 
-    def _validate_numbered_boundary(self, boundary_items: List[Dict[str, Any]], current_step: Step, new_coords: List[Tuple[float, float]]):
+    def _validate_numbered_boundary(self, boundary_items: List[Boundary], current_step: Step, new_coords: List[Tuple[float, float]]):
         for item in boundary_items:
             if item["boundary_type"] not in [current_step.value, "TABLE"]:
                 other_coords = [
