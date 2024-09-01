@@ -1,27 +1,29 @@
 
 from math import atan
-from typing import Tuple
+from typing import Tuple , List
+from models import Quad
 #import matplotlib.pyplot as plt
 
 class IntersectionValidator:
-    def __init__(self, quad1, quad2):
+    def __init__(self, quad1: Quad, quad2: Quad):
         self.quad1 = quad1
         self.quad2 = quad2
 
     @staticmethod
-    def orientation(p, q, r):
+    def orientation(p: Tuple[int, int], q: Tuple[int, int], r: Tuple[int, int]) -> int:
         val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
         if val == 0:
             return 0  # Collinear
         return 1 if val > 0 else 2  # Clockwise or Counterclockwise
 
     @staticmethod
-    def on_segment(p, q, r):
+    def on_segment(p: Tuple[int, int], q: Tuple[int, int], r: Tuple[int, int]) -> bool:
         return (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
                 q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1]))
 
     @staticmethod
-    def line_intersection(line1, line2):
+    def line_intersection(line1: Tuple[Tuple[int, int], Tuple[int, int]], 
+                          line2: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[float, float] | None:
         x1, y1 = line1[0]
         x2, y2 = line1[1]
         x3, y3 = line2[0]
@@ -40,18 +42,18 @@ class IntersectionValidator:
             return (x, y)
         return None
 
-    def find_intersections(self):
+    def find_intersections(self) -> List[Tuple[float, float]]:
         edges1 = [
-            (self.quad1['UL'], self.quad1['UR']),
-            (self.quad1['UR'], self.quad1['LR']),
-            (self.quad1['LR'], self.quad1['LL']),
-            (self.quad1['LL'], self.quad1['UL'])
+            (self.quad1.UL_coord.to_tuple(), self.quad1.UR_coord.to_tuple()),
+            (self.quad1.UR_coord.to_tuple(), self.quad1.LR_coord.to_tuple()),
+            (self.quad1.LR_coord.to_tuple(), self.quad1.LL_coord.to_tuple()),
+            (self.quad1.LL_coord.to_tuple(), self.quad1.UL_coord.to_tuple())
         ]
         edges2 = [
-            (self.quad2['UL'], self.quad2['UR']),
-            (self.quad2['UR'], self.quad2['LR']),
-            (self.quad2['LR'], self.quad2['LL']),
-            (self.quad2['LL'], self.quad2['UL'])
+            (self.quad2.UL_coord.to_tuple(), self.quad2.UR_coord.to_tuple()),
+            (self.quad2.UR_coord.to_tuple(), self.quad2.LR_coord.to_tuple()),
+            (self.quad2.LR_coord.to_tuple(), self.quad2.LL_coord.to_tuple()),
+            (self.quad2.LL_coord.to_tuple(), self.quad2.UL_coord.to_tuple())
         ]
 
         intersections = []
@@ -62,7 +64,7 @@ class IntersectionValidator:
                     intersections.append(point)
         return intersections
 
-    def is_valid_placement(self):
+    def is_valid_placement(self) -> Tuple[bool, str]:
         intersections = self.find_intersections()
         if not intersections:
             return True, "The placement is valid. The quadrilaterals do not intersect."
@@ -113,10 +115,15 @@ class IntersectionValidator:
 
 
 class PolygonValidator:
-    def __init__(self, UL:Tuple[int,int], UR:Tuple[int,int], LR:Tuple[int,int], LL:Tuple[int,int],):
-        self.points = [UL, UR, LR, LL]
+    def __init__(self, quad: Quad):
+        self.points = [
+            quad.UL_coord.to_tuple(),
+            quad.UR_coord.to_tuple(),
+            quad.LR_coord.to_tuple(),
+            quad.LL_coord.to_tuple()
+        ]
 
-    def check_convex(self):
+    def check_convex(self) -> bool:
         def cross_product_sign(o, a, b):
             return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
@@ -135,7 +142,7 @@ class PolygonValidator:
 
         return True
 
-    def check_self_intersecting(self):
+    def check_self_intersecting(self) -> bool:
         def do_lines_intersect(p1, p2, q1, q2):
             def orientation(p, q, r):
                 val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
@@ -166,10 +173,10 @@ class PolygonValidator:
 
         return False
 
-    def check_duplicate_points(self):
+    def check_duplicate_points(self) -> bool:
         return len(self.points) != len(set(self.points))
 
-    def is_valid_polygon(self):
+    def is_valid_polygon(self) -> Tuple[bool, str]:
         if self.check_duplicate_points():
             return False, "Polygon has duplicate points."
 

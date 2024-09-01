@@ -29,6 +29,7 @@ class Direction(str, Enum):
     next = "next"
     previous = "previous"
 
+
 class Coordinate(BaseModel):
     x: int
     y: int
@@ -36,18 +37,20 @@ class Coordinate(BaseModel):
     def to_tuple(self) -> tuple[int, int]:
         return self.x, self.y
 
+class Quad(BaseModel):
+    UL_coord: Coordinate
+    UR_coord: Coordinate
+    LR_coord: Coordinate
+    LL_coord: Coordinate    
+
 class MatchTable(BaseModel):
     table_id: str
     camera_ip: str
     step: Step
     capacity: int
 
-class Boundary(BaseModel):
+class Boundary(Quad):
     boundary_type: str
-    UL_coord: Dict[str, int]
-    UR_coord: Dict[str, int]
-    LR_coord: Dict[str, int]
-    LL_coord: Dict[str, int]
 
 class BoundaryTable(BaseModel):
     table_id: str
@@ -59,10 +62,6 @@ class GenericResponse(BaseModel):
     data: Union[dict, list]
     status_code: int = 200
 
-class StepChangeRequest(BaseModel):
+class StepChangeRequest(Quad):
     direction: Direction
     camera_ip: str
-    UL_coord: Coordinate
-    UR_coord: Coordinate
-    LR_coord: Coordinate
-    LL_coord: Coordinate

@@ -38,10 +38,10 @@
         "LL_coord": {
           "x": 50,
           "y": 430
-        }
+        },
+        "boundary_type": "TABLE"
       },
       {
-        "boundary_type": "1",
         "UL_coord": {
           "x": 90,
           "y": 90
@@ -57,10 +57,10 @@
         "LL_coord": {
           "x": 90,
           "y": 230
-        }
+        },
+        "boundary_type": "1"
       },
       {
-        "boundary_type": "2",
         "UL_coord": {
           "x": 250,
           "y": 90
@@ -76,10 +76,10 @@
         "LL_coord": {
           "x": 250,
           "y": 230
-        }
+        },
+        "boundary_type": "2"
       },
       {
-        "boundary_type": "3",
         "UL_coord": {
           "x": 90,
           "y": 230
@@ -95,10 +95,10 @@
         "LL_coord": {
           "x": 90,
           "y": 390
-        }
+        },
+        "boundary_type": "3"
       },
       {
-        "boundary_type": "4",
         "UL_coord": {
           "x": 250,
           "y": 230
@@ -114,7 +114,8 @@
         "LL_coord": {
           "x": 250,
           "y": 390
-        }
+        },
+        "boundary_type": "4"
       }
     ]
   },
