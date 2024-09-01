@@ -21,7 +21,7 @@ class MatchService:
             raise ValueError("Match already exists.")
 
         new_match = MatchTable(table_id=table_id, camera_ip=camera_ip, step=Step.OUTER, capacity=capacity)
-        matches.append(new_match.dict())
+        matches.append(new_match)
         save_data(MATCH_DB_FILE, matches)
         return new_match
 
@@ -79,7 +79,7 @@ class BoundaryService:
             camera_ip=camera_ip,
             items=boundary_items
         )
-        boundaries.append(new_boundary_table.dict())
+        boundaries.append(new_boundary_table)
         save_data(BOUNDARY_DB_FILE, boundaries)
 
     def update_boundary(self, request: StepChangeRequest, current_step: Step) -> Dict[str, Any]:
@@ -109,10 +109,10 @@ class BoundaryService:
 
         # Update the boundary
         current_boundary.update({
-            "UL_coord": request.UL_coord.dict(),
-            "UR_coord": request.UR_coord.dict(),
-            "LR_coord": request.LR_coord.dict(),
-            "LL_coord": request.LL_coord.dict()
+            "UL_coord": request.UL_coord,
+            "UR_coord": request.UR_coord,
+            "LR_coord": request.LR_coord,
+            "LL_coord": request.LL_coord
         })
 
         save_data(BOUNDARY_DB_FILE, boundaries)
@@ -135,7 +135,7 @@ class BoundaryService:
                     Coordinate(**item["LR_coord"]).to_tuple(),
                     Coordinate(**item["LL_coord"]).to_tuple()
                 ]
-                valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
+                valid, message = IntersectionValidator(new_coords, other_coords).is_valid_placement()
                 if not valid:
                     raise ValueError(f"OUTER boundary intersects with {item['boundary_type']} boundary.")
 
@@ -148,7 +148,7 @@ class BoundaryService:
                 Coordinate(**outer_boundary["LR_coord"]).to_tuple(),
                 Coordinate(**outer_boundary["LL_coord"]).to_tuple()
             ]
-            valid, message = IntersectionValidator(*new_coords, *outer_coords).is_valid_placement()
+            valid, message = IntersectionValidator(new_coords, outer_coords).is_valid_placement()
             if not valid:
                 raise ValueError("TABLE boundary intersects with OUTER boundary.")
 
@@ -161,7 +161,7 @@ class BoundaryService:
                     Coordinate(**item["LR_coord"]).to_tuple(),
                     Coordinate(**item["LL_coord"]).to_tuple()
                 ]
-                valid, message = IntersectionValidator(*new_coords, *other_coords).is_valid_placement()
+                valid, message = IntersectionValidator(new_coords, other_coords).is_valid_placement()
                 if not valid:
                     raise ValueError(f"Boundary {current_step.value} intersects with {item['boundary_type']} boundary.")
 
@@ -204,7 +204,7 @@ class BoundaryService:
                 LR_coord=Coordinate(**default_coords["LR"]),
                 LL_coord=Coordinate(**default_coords["LL"])
             )
-            boundary_items.append(new_boundary.dict())
+            boundary_items.append(new_boundary)
 
         new_boundary_table = BoundaryTable(
             table_id=table_id,
@@ -212,7 +212,7 @@ class BoundaryService:
             items=boundary_items
         )
 
-        boundaries[boundary_index] = new_boundary_table.dict()
+        boundaries[boundary_index] = new_boundary_table
         save_data(BOUNDARY_DB_FILE, boundaries)
 
-        return match, new_boundary_table.dict()
+        return match, new_boundary_table
