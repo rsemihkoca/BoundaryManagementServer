@@ -165,12 +165,16 @@ class BoundaryService:
                 if not valid:
                     raise ValueError(f"Boundary {current_step.value} intersects with {item.boundary_type} boundary.")
 
-    def get_boundaries(self, camera_ip: str) -> BoundaryTable:
+    def get_boundaries(self, camera_ip: str) -> dict:
         boundaries = load_data(BOUNDARY_DB_FILE)
-        camera_boundaries = next((BoundaryTable(**b) for b in boundaries if b["camera_ip"] == camera_ip), None)
+        camera_boundaries = next((b for b in boundaries if b["camera_ip"] == camera_ip), None)
+        
         if not camera_boundaries:
             raise ValueError("No boundaries found for the given camera IP.")
-        return camera_boundaries
+        
+        boundary_table = BoundaryTable(**camera_boundaries)
+        
+        return boundary_table.model_dump(by_alias=True)
 
     def delete_boundaries(self, camera_ip: str):
         boundaries = load_data(BOUNDARY_DB_FILE)

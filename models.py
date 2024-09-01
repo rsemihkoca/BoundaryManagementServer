@@ -56,6 +56,9 @@ class BoundaryTable(BaseModel):
     table_id: str
     camera_ip: str
     items: List[Boundary]
+    
+    class Config:
+        allow_population_by_field_name = True
 
 class GenericResponse(BaseModel):
     success: bool
