@@ -216,7 +216,6 @@ class DefaultBoundaryCoordinates:
                     "LR": {"x": -320, "y": -180}, "LL": {"x": -440, "y": -180}
                 },
             },
-            }
         }
         
         if capacity in capacity_coordinates and boundary_type in capacity_coordinates[capacity]:
