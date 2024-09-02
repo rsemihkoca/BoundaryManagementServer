@@ -5,6 +5,126 @@
     "items": [
       {
         "UL_coord": {
+          "x": -4,
+          "y": -4
+        },
+        "UR_coord": {
+          "x": -2,
+          "y": -4
+        },
+        "LR_coord": {
+          "x": -2,
+          "y": -2
+        },
+        "LL_coord": {
+          "x": -4,
+          "y": -2
+        },
+        "boundary_type": "OUTER"
+      },
+      {
+        "UL_coord": {
+          "x": 50,
+          "y": 50
+        },
+        "UR_coord": {
+          "x": 590,
+          "y": 50
+        },
+        "LR_coord": {
+          "x": 590,
+          "y": 430
+        },
+        "LL_coord": {
+          "x": 50,
+          "y": 430
+        },
+        "boundary_type": "TABLE"
+      },
+      {
+        "UL_coord": {
+          "x": 90,
+          "y": 90
+        },
+        "UR_coord": {
+          "x": 250,
+          "y": 90
+        },
+        "LR_coord": {
+          "x": 250,
+          "y": 230
+        },
+        "LL_coord": {
+          "x": 90,
+          "y": 230
+        },
+        "boundary_type": "1"
+      },
+      {
+        "UL_coord": {
+          "x": 250,
+          "y": 90
+        },
+        "UR_coord": {
+          "x": 410,
+          "y": 90
+        },
+        "LR_coord": {
+          "x": 410,
+          "y": 230
+        },
+        "LL_coord": {
+          "x": 250,
+          "y": 230
+        },
+        "boundary_type": "2"
+      },
+      {
+        "UL_coord": {
+          "x": 90,
+          "y": 230
+        },
+        "UR_coord": {
+          "x": 250,
+          "y": 230
+        },
+        "LR_coord": {
+          "x": 250,
+          "y": 390
+        },
+        "LL_coord": {
+          "x": 90,
+          "y": 390
+        },
+        "boundary_type": "3"
+      },
+      {
+        "UL_coord": {
+          "x": 250,
+          "y": 230
+        },
+        "UR_coord": {
+          "x": 410,
+          "y": 230
+        },
+        "LR_coord": {
+          "x": 410,
+          "y": 390
+        },
+        "LL_coord": {
+          "x": 250,
+          "y": 390
+        },
+        "boundary_type": "4"
+      }
+    ]
+  },
+  {
+    "table_id": "0_B3",
+    "camera_ip": "192.168.0.65",
+    "items": [
+      {
+        "UL_coord": {
           "x": 10,
           "y": 10
         },
