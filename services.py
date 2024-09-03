@@ -27,6 +27,7 @@ class MatchService:
         return new_match
 
     def change_step(self, request: StepChangeRequest, boundary_service: 'BoundaryService') -> Tuple[MatchTable, Boundary]:
+        updated_boundary=None
         matches = self.get_all_matches()
         match = next((m for m in matches if m.camera_ip == request.camera_ip), None)
         if not match:
@@ -39,7 +40,10 @@ class MatchService:
            (current_step == Step.FINAL and request.direction == Direction.next):
             raise ValueError(f"Cannot move {request.direction} from {current_step} step.")
 
-        updated_boundary = boundary_service.update_boundary(request, current_step)
+        if current_step == Step.FINAL:
+            pass
+        else:
+            updated_boundary = boundary_service.update_boundary(request, current_step)
 
         new_step = get_next_or_previous_step(
             current_step,
